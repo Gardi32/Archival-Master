@@ -1,0 +1,24 @@
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  concurrency: 80
+  minInstances: 0
+  maxInstances: 5
+
+env:
+  - variable: NEXT_PUBLIC_SUPABASE_URL
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: SUPABASE_SERVICE_ROLE_KEY
+    availability:
+      - RUNTIME
+    secret: supabase-service-role-key
+  - variable: GOOGLE_AI_API_KEY
+    availability:
+      - RUNTIME
+    secret: google-ai-api-key
