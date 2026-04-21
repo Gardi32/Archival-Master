@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
+import { Sparkles, Link, X } from 'lucide-react'
 import type { Material, Provider } from '@/types/database'
 
 interface Props {
@@ -16,6 +18,9 @@ interface Props {
 
 export function MaterialForm({ providers, initialData, onSave, onCancel }: Props) {
   const [saving, setSaving] = useState(false)
+  const [extractUrl, setExtractUrl] = useState('')
+  const [extracting, setExtracting] = useState(false)
+  const [showExtract, setShowExtract] = useState(!initialData?.title)
   const [form, setForm] = useState({
     title: initialData?.title ?? '',
     code: initialData?.code ?? '',
@@ -40,6 +45,50 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
 
   function set(key: string, value: string) {
     setForm(prev => ({ ...prev, [key]: value }))
+  }
+
+  async function handleExtract(e: React.FormEvent) {
+    e.preventDefault()
+    if (!extractUrl.trim()) return
+    setExtracting(true)
+    try {
+      const res = await fetch('/api/extract-material', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: extractUrl }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        toast.error(json.error ?? 'Error al extraer datos')
+        setExtracting(false)
+        return
+      }
+      const d = json.data
+      setForm(prev => ({
+        ...prev,
+        title: d.title || prev.title,
+        description: d.description || prev.description,
+        duration_sec: d.duration_sec != null ? String(d.duration_sec) : prev.duration_sec,
+        format: d.format || prev.format,
+        resolution: d.resolution || prev.resolution,
+        fps: d.fps != null ? String(d.fps) : prev.fps,
+        aspect_ratio: d.aspect_ratio || prev.aspect_ratio,
+        timecode_in: d.timecode_in || prev.timecode_in,
+        timecode_out: d.timecode_out || prev.timecode_out,
+        rights_type: d.rights_type || prev.rights_type,
+        cost_amount: d.cost_amount != null ? String(d.cost_amount) : prev.cost_amount,
+        cost_currency: d.cost_currency || prev.cost_currency,
+        cost_unit: d.cost_unit || prev.cost_unit,
+        link: d.link || prev.link,
+        screener_url: d.screener_url || prev.screener_url,
+        notes: d.notes ? (prev.notes ? `${prev.notes}\n${d.notes}` : d.notes) : prev.notes,
+      }))
+      setShowExtract(false)
+      toast.success('¡Datos extraídos! Revisá y completá los campos faltantes.')
+    } catch {
+      toast.error('Error de conexión')
+    }
+    setExtracting(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -71,6 +120,66 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* IA Extractor */}
+      {showExtract ? (
+        <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-purple-400" />
+              <span className="text-sm font-medium text-purple-300">Completar con IA desde URL</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowExtract(false)}
+              className="text-[#555] hover:text-[#aaa] transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-xs text-[#666] mb-3">
+            Pegá la URL de la página del proveedor (Getty, Corbis, AP Archive, etc.) y la IA va a extraer todos los datos automáticamente.
+          </p>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Link className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#555]" />
+              <input
+                type="url"
+                value={extractUrl}
+                onChange={e => setExtractUrl(e.target.value)}
+                placeholder="https://www.gettyimages.com/..."
+                className="w-full h-9 pl-8 pr-3 rounded-lg border border-[#2a2a2a] bg-[#111] text-sm text-[#ededed] placeholder:text-[#444] focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleExtract(e as never) } }}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              loading={extracting}
+              onClick={handleExtract}
+              className="bg-purple-600 hover:bg-purple-700 whitespace-nowrap"
+            >
+              {!extracting && <Sparkles className="h-3.5 w-3.5" />}
+              Extraer datos
+            </Button>
+          </div>
+          {extracting && (
+            <p className="text-xs text-purple-400 mt-2 animate-pulse">
+              Analizando la página con Gemini AI...
+            </p>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowExtract(true)}
+          className="w-full flex items-center justify-center gap-2 h-8 rounded-lg border border-dashed border-purple-500/30 text-xs text-purple-400 hover:border-purple-500/60 hover:bg-purple-500/5 transition-colors"
+        >
+          <Sparkles className="h-3 w-3" />
+          Completar automáticamente desde una URL con IA
+        </button>
+      )}
+
       {/* Identificación */}
       <div>
         <h3 className="text-xs font-semibold text-[#666] uppercase tracking-wider mb-3">Identificación</h3>
