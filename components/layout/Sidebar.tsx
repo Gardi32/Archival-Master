@@ -3,10 +3,12 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
-  Film, Building2, FileText, Calculator, ShoppingCart, FolderOpen, Settings, ChevronLeft, LayoutGrid
+  Film, Building2, FileText, Calculator, ShoppingCart, FolderOpen, Settings, ChevronLeft, LayoutGrid, LayoutDashboard, ClipboardList
 } from 'lucide-react'
 
 const NAV_ITEMS = [
+  { href: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: 'research', label: 'Research', icon: ClipboardList },
   { href: 'materials', label: 'Materiales', icon: Film },
   { href: 'providers', label: 'Proveedores', icon: Building2 },
   { href: 'edl', label: 'EDL Import', icon: FileText },

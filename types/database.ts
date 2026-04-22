@@ -154,6 +154,40 @@ export interface Document {
   order?: Order
 }
 
+export interface ResearchItem {
+  id: string
+  project_id: string
+  id_number: number | null
+  shot_code: string | null
+  subject: string
+  date: string | null          // ISO date YYYY-MM-DD
+  ep: string | null
+  scene: string | null
+  supplier_name: string | null
+  delivery_timing: string | null
+  location: string | null
+  file_type: string | null     // SOURCE ON LINE VIDEO | REQUESTED GRAPHIC | REQUESTED VIDEO
+  screener_filename: string | null
+  supplier_clip_id: string | null
+  description: string | null
+  log: string | null
+  link_scr: string | null
+  tags: string | null
+  usd_cost: number | null
+  special_conditions: string | null
+  send_scr: boolean
+  support_supplier: string | null
+  image_voice_rights: string | null
+  rights_supplier: string | null
+  other_rights: string | null
+  media: string | null
+  territory: string | null
+  duration_rights: string | null
+  in_context_promo: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface ProjectMember {
   id: string
   project_id: string
@@ -178,6 +212,7 @@ export interface Database {
       order_items: { Row: OrderItem; Insert: Omit<OrderItem, 'id' | 'material'>; Update: Partial<OrderItem> }
       documents: { Row: Document; Insert: Omit<Document, 'id' | 'uploaded_at' | 'order'>; Update: Partial<Document> }
       project_members: { Row: ProjectMember; Insert: Omit<ProjectMember, 'id' | 'invited_at'>; Update: Partial<ProjectMember> }
+      research_items: { Row: ResearchItem; Insert: Omit<ResearchItem, 'id' | 'created_at' | 'updated_at'>; Update: Partial<ResearchItem> }
     }
   }
 }
