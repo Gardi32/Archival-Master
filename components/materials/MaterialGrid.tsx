@@ -1,25 +1,83 @@
 'use client'
 import { useCallback, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import 'ag-grid-community/styles/ag-grid.css'
-import 'ag-grid-community/styles/ag-theme-quartz.css'
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import type { ColDef, GridReadyEvent, CellValueChangedEvent } from 'ag-grid-community'
-import { cn, STATUS_LABELS, STATUS_COLORS, RIGHTS_LABELS, COST_UNIT_LABELS, formatCost, formatDuration } from '@/lib/utils'
+import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
+import type { ColDef, CellValueChangedEvent, ICellRendererParams, RowClickedEvent } from 'ag-grid-community'
+import { cn, STATUS_LABELS, STATUS_COLORS, RIGHTS_LABELS, COST_UNIT_LABELS, formatDuration } from '@/lib/utils'
 import type { Material, Provider, MaterialStatus } from '@/types/database'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
-import { ExternalLink, Trash2 } from 'lucide-react'
+import { ExternalLink, Trash2, Copy } from 'lucide-react'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
+// ─── Theme ───────────────────────────────────────────────────────────────────
+
+const darkTheme = themeQuartz.withParams({
+  backgroundColor: '#1a1a1a',
+  foregroundColor: '#cccccc',
+  headerBackgroundColor: '#111111',
+  headerTextColor: '#888888',
+  headerColumnResizeHandleColor: '#333333',
+  rowHoverColor: '#222222',
+  oddRowBackgroundColor: '#161616',
+  selectedRowBackgroundColor: '#2a1a0a',
+  borderColor: '#2a2a2a',
+  inputFocusBorder: { color: '#f97316', width: 1, style: 'solid' },
+  rangeSelectionBorderColor: '#f97316',
+  rangeSelectionBackgroundColor: 'rgba(249,115,22,0.08)',
+  accentColor: '#f97316',
+  fontSize: 12,
+  rowHeight: 48,
+  headerHeight: 38,
+  wrapperBorderRadius: 0,
+  popupShadow: '0 4px 24px rgba(0,0,0,0.7)',
+  cardShadow: '0 4px 24px rgba(0,0,0,0.5)',
+})
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 
+const MATERIAL_TYPES = ['video', 'foto', 'grafico', 'social_media', 'audio', 'otro']
+const MATERIAL_TYPE_LABELS: Record<string, string> = {
+  video: 'Video', foto: 'Foto', grafico: 'Gráfico',
+  social_media: 'Social Media', audio: 'Audio', otro: 'Otro',
+}
+const MATERIAL_TYPE_INITIAL: Record<string, string> = {
+  video: 'V', foto: 'F', grafico: 'G', social_media: 'S', audio: 'A', otro: 'O',
+}
+
+// ─── ID generation ────────────────────────────────────────────────────────────
+
+function buildGeneratedId(
+  material: Material,
+  providerCode: string | undefined,
+  providerName: string | undefined,
+): string {
+  const typeInitial = (material.material_type && MATERIAL_TYPE_INITIAL[material.material_type]) || 'M'
+  const entryCode = material.entry_code || '----'
+  const prov = (
+    providerCode ||
+    (providerName || '').replace(/\s+/g, '').toUpperCase().slice(0, 3) ||
+    '---'
+  ).toUpperCase().slice(0, 3)
+  const quality = material.file_quality || 'SCR'
+  const origId = (material.original_id || '').replace(/\s+/g, '_')
+  const tags = (material.tags || '').trim().replace(/\s+/g, '_')
+
+  const parts = [`${typeInitial}${entryCode}`, prov, quality]
+  if (origId) parts.push(origId)
+  if (tags) parts.push(tags)
+  return parts.join('_')
+}
+
+// ─── Cell renderers ───────────────────────────────────────────────────────────
+
 function FrameCell({ value }: { value: { storage_path: string }[] | undefined }) {
-  if (!value?.length) return <div className="h-full flex items-center justify-center text-[#444]">—</div>
+  if (!value?.length) return <div className="h-full flex items-center justify-center text-[#333]">—</div>
   const url = `${SUPABASE_URL}/storage/v1/object/public/frames/${value[0].storage_path}`
   return (
-    <div className="h-full flex items-center">
+    <div className="h-full flex items-center pl-1">
       <div className="relative h-8 w-14 rounded overflow-hidden bg-[#2a2a2a]">
         <Image src={url} alt="" fill className="object-cover" sizes="56px" />
       </div>
@@ -28,6 +86,7 @@ function FrameCell({ value }: { value: { storage_path: string }[] | undefined })
 }
 
 function StatusCell({ value }: { value: MaterialStatus }) {
+  if (!value) return <span className="text-[#444]">—</span>
   return (
     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', STATUS_COLORS[value])}>
       {STATUS_LABELS[value]}
@@ -35,82 +94,162 @@ function StatusCell({ value }: { value: MaterialStatus }) {
   )
 }
 
+// Link cell: button-based so it doesn't intercept grid edit clicks
 function LinkCell({ value }: { value: string | null }) {
   if (!value) return <span className="text-[#444]">—</span>
   return (
-    <a href={value} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-      className="flex items-center gap-1 text-orange-400 hover:text-orange-300 text-xs truncate max-w-full"
-    >
-      <ExternalLink className="h-3 w-3 shrink-0" />
-      <span className="truncate">{value.replace(/^https?:\/\/(www\.)?/, '')}</span>
-    </a>
+    <div className="flex items-center gap-1 min-w-0 w-full">
+      <span className="truncate text-xs text-[#aaa]">
+        {value.replace(/^https?:\/\/(www\.)?/, '')}
+      </span>
+      <button
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => {
+          e.stopPropagation()
+          window.open(value, '_blank', 'noopener,noreferrer')
+        }}
+        className="shrink-0 text-[#555] hover:text-orange-400 transition-colors"
+        title="Abrir link"
+      >
+        <ExternalLink className="h-3 w-3" />
+      </button>
+    </div>
   )
 }
 
+function GeneratedIdCell({
+  data,
+  providerCodeMap,
+  providerNameMap,
+}: {
+  data: Material
+  providerCodeMap: Record<string, string>
+  providerNameMap: Record<string, string>
+}) {
+  const providerCode = data.provider_id ? providerCodeMap[data.provider_id] : undefined
+  const providerName = data.provider_id ? providerNameMap[data.provider_id] : undefined
+  const id = buildGeneratedId(data, providerCode, providerName)
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 w-full">
+      <span className="font-mono text-[11px] text-amber-400 truncate flex-1">{id}</span>
+      <button
+        onMouseDown={e => e.stopPropagation()}
+        onClick={e => {
+          e.stopPropagation()
+          navigator.clipboard.writeText(id)
+        }}
+        className="shrink-0 text-[#444] hover:text-amber-400 transition-colors"
+        title="Copiar ID"
+      >
+        <Copy className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface Props {
   materials: Material[]
-  providers: Pick<Provider, 'id' | 'name'>[]
+  providers: Pick<Provider, 'id' | 'name' | 'code'>[]
   projectId: string
   onUpdate: (id: string, data: Partial<Material>) => void
   onSelect: (m: Material) => void
   onDelete: (id: string) => void
 }
 
+// ─── Grid ─────────────────────────────────────────────────────────────────────
+
 export function MaterialGrid({ materials, providers, onUpdate, onSelect, onDelete }: Props) {
-  const providerMap = useMemo(() =>
-    Object.fromEntries(providers.map(p => [p.id, p.name])),
-    [providers]
+  const providerNameMap = useMemo(
+    () => Object.fromEntries(providers.map(p => [p.id, p.name])),
+    [providers],
+  )
+  const providerCodeMap = useMemo(
+    () => Object.fromEntries(providers.filter(p => p.code).map(p => [p.id, p.code!])),
+    [providers],
   )
 
-  const colDefs = useMemo(() => [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const colDefs = useMemo<ColDef<Material, any>[]>(() => ([
+    // ── Pinned left ────────────────────────────────────────────────────────────
     {
-      field: 'frames',
+      field: 'frames' as keyof Material,
       headerName: '',
       width: 72,
       pinned: 'left',
       editable: false,
       sortable: false,
+      resizable: false,
       cellRenderer: FrameCell,
-      cellStyle: { padding: '4px 8px' } as Record<string, string>,
+      cellStyle: { padding: '4px 6px' },
     },
     {
-      field: 'code',
-      headerName: 'Código',
-      width: 110,
-      editable: true,
+      field: 'entry_code',
+      headerName: 'N°',
+      width: 68,
       pinned: 'left',
-      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#888' } as Record<string, string>,
+      editable: true,
+      sortable: true,
+      cellStyle: { fontFamily: 'monospace', fontSize: '13px', color: '#f97316', fontWeight: '700', justifyContent: 'center' },
     },
     {
       field: 'title',
       headerName: 'Título',
-      flex: 1,
-      minWidth: 200,
+      width: 220,
+      pinned: 'left',
       editable: true,
-      cellStyle: { fontWeight: '500', color: '#ededed' } as Record<string, string>,
+      cellStyle: { fontWeight: '500', color: '#ededed' },
     },
+
+    // ── Clasificación ──────────────────────────────────────────────────────────
     {
-      field: 'provider_id',
-      headerName: 'Proveedor',
-      width: 150,
+      field: 'material_type',
+      headerName: 'Tipo',
+      width: 130,
       editable: true,
       cellEditor: 'agSelectCellEditor',
-      cellEditorParams: { values: ['', ...providers.map(p => p.id)] },
-      valueFormatter: (p: { value: string }) => providerMap[p.value] ?? '—',
+      cellEditorParams: { values: ['', ...MATERIAL_TYPES] },
+      valueFormatter: (p: { value: string }) => MATERIAL_TYPE_LABELS[p.value] ?? (p.value || '—'),
+      cellStyle: { fontSize: '12px', color: '#aaa' },
+    },
+    {
+      field: 'file_quality',
+      headerName: 'Calidad',
+      width: 88,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['SCR', 'HQD'] },
+      valueFormatter: (p: { value: string | null }) => p.value || 'SCR',
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#aaa' },
     },
     {
       field: 'status',
       headerName: 'Estado',
-      width: 155,
+      width: 160,
       editable: true,
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: { values: ['searching', 'screener_received', 'approved', 'order_sent', 'purchased'] },
       cellRenderer: StatusCell,
     },
+
+    // ── Proveedor (read-only en grid — editar en el panel lateral) ─────────────
+    {
+      field: 'provider_id',
+      headerName: 'Proveedor',
+      width: 140,
+      editable: false,
+      sortable: true,
+      valueFormatter: (p: { value: string }) => providerNameMap[p.value] ?? '—',
+      cellStyle: { fontSize: '12px', color: '#f97316' },
+      tooltipValueGetter: () => 'Doble clic en la fila para editar el proveedor en el panel',
+    },
+
+    // ── Técnico ────────────────────────────────────────────────────────────────
     {
       field: 'duration_sec',
       headerName: 'Duración',
-      width: 100,
+      width: 95,
       editable: true,
       type: 'numericColumn',
       valueFormatter: (p: { value: number }) => formatDuration(p.value),
@@ -119,126 +258,194 @@ export function MaterialGrid({ materials, providers, onUpdate, onSelect, onDelet
     {
       field: 'format',
       headerName: 'Formato',
-      width: 90,
+      width: 88,
       editable: true,
+      cellStyle: { fontSize: '12px' },
     },
     {
       field: 'resolution',
-      headerName: 'Res.',
-      width: 80,
+      headerName: 'Resolución',
+      width: 95,
       editable: true,
       cellStyle: { fontSize: '12px' },
     },
     {
       field: 'fps',
       headerName: 'FPS',
-      width: 65,
+      width: 60,
       editable: true,
       type: 'numericColumn',
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px' },
     },
     {
       field: 'aspect_ratio',
       headerName: 'Aspect',
-      width: 80,
+      width: 75,
       editable: true,
       cellStyle: { fontSize: '12px' },
     },
+
+    // ── Derechos y costo ───────────────────────────────────────────────────────
     {
       field: 'rights_type',
       headerName: 'Derechos',
-      width: 120,
+      width: 115,
       editable: true,
       cellEditor: 'agSelectCellEditor',
-      cellEditorParams: { values: ['free', 'licensed', 'restricted', 'unknown'] },
+      cellEditorParams: { values: ['unknown', 'free', 'licensed', 'restricted'] },
       valueFormatter: (p: { value: string }) => RIGHTS_LABELS[p.value] ?? p.value,
+      cellStyle: { fontSize: '12px' },
     },
     {
       field: 'cost_amount',
       headerName: 'Costo',
-      width: 100,
+      width: 90,
       editable: true,
       type: 'numericColumn',
-      valueFormatter: (p: { value: number | null }) => p.value != null ? String(p.value) : '—',
+      valueFormatter: (p: { value: number | null }) => p.value != null ? `$${p.value}` : '—',
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#4ade80' },
     },
     {
       field: 'cost_currency',
       headerName: 'Moneda',
-      width: 85,
+      width: 80,
       editable: true,
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: { values: ['USD', 'ARS', 'EUR', 'GBP'] },
+      cellStyle: { fontSize: '12px' },
     },
     {
       field: 'cost_unit',
       headerName: 'Unidad',
-      width: 120,
+      width: 110,
       editable: true,
       cellEditor: 'agSelectCellEditor',
-      cellEditorParams: { values: ['per_sec', 'per_min', 'flat'] },
-      valueFormatter: (p) => COST_UNIT_LABELS[p.value] ?? p.value,
+      cellEditorParams: { values: ['flat', 'per_sec', 'per_min'] },
+      valueFormatter: (p: { value: string }) => COST_UNIT_LABELS[p.value] ?? p.value,
+      cellStyle: { fontSize: '12px' },
     },
+
+    // ── Identificación del archivo ─────────────────────────────────────────────
+    {
+      field: 'code',
+      headerName: 'Cód. interno',
+      width: 115,
+      editable: true,
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#888' },
+    },
+    {
+      field: 'original_id',
+      headerName: 'ID Original',
+      width: 145,
+      editable: true,
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#888' },
+    },
+    {
+      field: 'tags',
+      headerName: 'Tags',
+      width: 180,
+      editable: true,
+      cellStyle: { fontSize: '12px', color: '#888' },
+    },
+
+    // ── Links ──────────────────────────────────────────────────────────────────
     {
       field: 'link',
       headerName: 'Link',
-      width: 160,
+      width: 190,
       editable: true,
       cellRenderer: LinkCell,
     },
     {
       field: 'screener_url',
-      headerName: 'Screener',
-      width: 160,
+      headerName: 'Screener URL',
+      width: 190,
       editable: true,
       cellRenderer: LinkCell,
     },
+
+    // ── Notas ─────────────────────────────────────────────────────────────────
     {
-      headerName: '',
-      width: 48,
+      field: 'notes',
+      headerName: 'Notas',
+      width: 220,
+      editable: true,
+      cellStyle: { fontSize: '12px', color: '#888' },
+    },
+
+    // ── Pinned right ───────────────────────────────────────────────────────────
+    {
+      headerName: 'ID GENERADO',
+      width: 300,
       pinned: 'right',
       sortable: false,
       editable: false,
+      resizable: true,
+      cellRenderer: (p: ICellRendererParams<Material>) =>
+        p.data ? (
+          <GeneratedIdCell
+            data={p.data}
+            providerCodeMap={providerCodeMap}
+            providerNameMap={providerNameMap}
+          />
+        ) : null,
+      cellStyle: { paddingLeft: '8px', paddingRight: '4px' },
+    },
+    {
+      headerName: '',
+      width: 44,
+      pinned: 'right',
+      sortable: false,
+      editable: false,
+      resizable: false,
       cellRenderer: ({ data }: { data: Material }) => (
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(data.id) }}
-          className="h-full flex items-center justify-center text-[#444] hover:text-red-400 transition-colors"
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onDelete(data.id) }}
+          className="h-full w-full flex items-center justify-center text-[#444] hover:text-red-400 transition-colors"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       ),
     },
-  ], [providers, providerMap, onDelete])
+  ] as ColDef<Material, any>[]), [providers, providerNameMap, providerCodeMap, onDelete])
 
   const defaultColDef = useMemo<ColDef>(() => ({
     resizable: true,
     sortable: true,
     suppressMovable: false,
-    cellStyle: { display: 'flex', alignItems: 'center', color: '#ccc', fontSize: '13px' } as Record<string, string>,
+    cellStyle: { display: 'flex', alignItems: 'center', color: '#ccc', fontSize: '13px' },
   }), [])
 
   const onCellValueChanged = useCallback((e: CellValueChangedEvent<Material>) => {
-    const { data, colDef, newValue } = e
-    if (!colDef.field || newValue === e.oldValue) return
-    onUpdate(data.id, { [colDef.field]: newValue || null } as Partial<Material>)
+    const { data, colDef, newValue, oldValue } = e
+    if (!colDef.field || newValue === oldValue) return
+    // Convert empty string to null for nullable fields
+    const val = (newValue === '' || newValue === undefined) ? null : newValue
+    onUpdate(data.id, { [colDef.field]: val } as Partial<Material>)
   }, [onUpdate])
 
-  const onRowClicked = useCallback((e: { data: Material }) => {
-    onSelect(e.data)
+  const onRowClicked = useCallback((e: RowClickedEvent<Material>) => {
+    if (e.data) onSelect(e.data)
   }, [onSelect])
 
   return (
-    <div className="flex-1 min-w-0 ag-theme-archival" style={{ height: '100%' }}>
-      <AgGridReact
+    <div className="flex-1 min-w-0 min-h-0 overflow-hidden" style={{ height: '100%' }}>
+      <AgGridReact<Material>
+        theme={darkTheme}
         rowData={materials}
-        columnDefs={colDefs as ColDef[]}
+        columnDefs={colDefs}
         defaultColDef={defaultColDef}
         onCellValueChanged={onCellValueChanged}
         onRowClicked={onRowClicked}
         rowSelection="single"
         suppressRowClickSelection={false}
-        animateRows
-        enableCellTextSelection
+        animateRows={false}
+        enableCellTextSelection={false}
         stopEditingWhenCellsLoseFocus
-        getRowId={(params) => params.data.id}
+        singleClickEdit={false}
+        getRowId={params => params.data.id}
+        tooltipShowDelay={800}
       />
     </div>
   )
