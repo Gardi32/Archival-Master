@@ -34,26 +34,24 @@ export function ProjectsClient({ initialProjects, userEmail }: Props) {
     setCreating(true)
 
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-
     const { data, error } = await supabase
-      .from('projects')
-      .insert({ name: name.trim(), client: client.trim() || null, description: description.trim() || null, created_by: user.id } as never)
-      .select()
-      .single()
+      .rpc('create_project', {
+        p_name: name.trim(),
+        p_client: client.trim() || null,
+        p_description: description.trim() || null,
+      })
 
-    if (error) {
+    if (error || !data?.[0]) {
       toast.error('Error al crear el proyecto')
     } else {
-      const p = data as { id: string }
-      setProjects(prev => [data as never, ...prev])
+      const p = data[0] as { id: string }
+      setProjects(prev => [data[0] as never, ...prev])
       setShowForm(false)
       setName('')
       setClient('')
       setDescription('')
       toast.success('Proyecto creado')
-      router.push(`/projects/${p.id}/materials`)
+      router.push(`/projects/${p.id}/dashboard`)
     }
     setCreating(false)
   }
@@ -179,7 +177,7 @@ export function ProjectsClient({ initialProjects, userEmail }: Props) {
             {projects.map(project => (
               <button
                 key={project.id}
-                onClick={() => router.push(`/projects/${project.id}/materials`)}
+                onClick={() => router.push(`/projects/${project.id}/dashboard`)}
                 className="text-left bg-[#1a1a1a] border border-[#242424] rounded-xl p-5 hover:border-[#3a3a3a] hover:bg-[#1e1e1e] transition-all group"
               >
                 <div className="flex items-start justify-between mb-3">

@@ -1,16 +1,81 @@
 'use client'
 import { useCallback, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import 'ag-grid-community/styles/ag-grid.css'
-import 'ag-grid-community/styles/ag-theme-quartz.css'
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
 import type { ColDef, CellValueChangedEvent, ICellRendererParams } from 'ag-grid-community'
-import { ExternalLink, Trash2, Check, X } from 'lucide-react'
-import type { ResearchItem } from '@/types/database'
+
+const darkTheme = themeQuartz.withParams({
+  backgroundColor: '#1a1a1a',
+  foregroundColor: '#cccccc',
+  headerBackgroundColor: '#111111',
+  headerTextColor: '#888888',
+  headerColumnResizeHandleColor: '#333333',
+  rowHoverColor: '#222222',
+  oddRowBackgroundColor: '#161616',
+  selectedRowBackgroundColor: '#2a1a0a',
+  borderColor: '#2a2a2a',
+  inputFocusBorder: { color: '#f97316', width: 1, style: 'solid' },
+  rangeSelectionBorderColor: '#f97316',
+  rangeSelectionBackgroundColor: 'rgba(249,115,22,0.08)',
+  accentColor: '#f97316',
+  fontSize: 12,
+  rowHeight: 48,
+  headerHeight: 38,
+  wrapperBorderRadius: 0,
+  popupShadow: '0 4px 24px rgba(0,0,0,0.7)',
+  cardShadow: '0 4px 24px rgba(0,0,0,0.5)',
+})
+import { ExternalLink, Trash2, Check, X, Copy, ArrowUpRight } from 'lucide-react'
+import type { ResearchItem, Provider, ProviderRate } from '@/types/database'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
 const FILE_TYPES = ['SOURCE ON LINE VIDEO', 'REQUESTED VIDEO', 'REQUESTED GRAPHIC', 'SOURCE ON LINE AUDIO', 'OTHER']
+
+const FILE_TYPE_ABBREV: Record<string, string> = {
+  'SOURCE ON LINE VIDEO': 'SOV',
+  'REQUESTED VIDEO': 'RQV',
+  'REQUESTED GRAPHIC': 'RQG',
+  'SOURCE ON LINE AUDIO': 'SOA',
+  'OTHER': 'OTR',
+}
+
+function buildGeneratedId(item: ResearchItem): string {
+  const typeAbbrev = (item.file_type && FILE_TYPE_ABBREV[item.file_type]) || 'MAT'
+  const quality = item.file_quality || 'SCR'
+  const supplier = (item.supplier_name || '')
+    .replace(/\s+/g, '')
+    .toUpperCase()
+    .slice(0, 3) || '---'
+  const title = (item.subject || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .slice(0, 30) || 'UNTITLED'
+  return `${typeAbbrev}_${quality}_${supplier}_${title}`
+}
+
+function GeneratedIdCell({ data }: { data: ResearchItem }) {
+  const id = buildGeneratedId(data)
+  const isEmpty = !data.file_type && !data.supplier_name && !data.subject
+  if (isEmpty) return <span className="text-[#444]">—</span>
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      <span className="font-mono text-[11px] text-amber-400 truncate">{id}</span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          navigator.clipboard.writeText(id)
+        }}
+        className="shrink-0 text-[#444] hover:text-amber-400 transition-colors"
+        title="Copiar ID"
+      >
+        <Copy className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
 
 function LinkCell({ value }: { value: string | null }) {
   if (!value) return <span className="text-[#444]">—</span>
@@ -43,30 +108,38 @@ function TextareaCell({ value }: { value: string | null }) {
 
 interface Props {
   items: ResearchItem[]
+  providers: Pick<Provider, 'id' | 'name'>[]
+  providerRates: Record<string, ProviderRate[]>
   onUpdate: (id: string, data: Partial<ResearchItem>) => void
   onDelete: (id: string) => void
+  onPromote: (item: ResearchItem) => void
 }
 
-export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
+export function ResearchGrid({ items, providers, providerRates, onUpdate, onDelete, onPromote }: Props) {
+  const providerMap = useMemo(
+    () => Object.fromEntries(providers.map(p => [p.id, p.name])),
+    [providers]
+  )
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const colDefs = useMemo<ColDef<ResearchItem, any>[]>(() => ([
     // ── Identification ──────────────────────────────────────────────────────
     {
       field: 'id_number',
       headerName: '#',
-      width: 56,
+      width: 52,
       pinned: 'left',
       editable: true,
       type: 'numericColumn',
-      cellStyle: { color: '#666', fontSize: '12px', fontFamily: 'monospace' },
+      cellStyle: { color: '#555', fontSize: '11px', fontFamily: 'monospace', justifyContent: 'center' },
     },
     {
       field: 'shot_code',
       headerName: 'SHOT',
-      width: 210,
+      width: 180,
       pinned: 'left',
       editable: true,
-      cellStyle: { fontFamily: 'monospace', fontSize: '11px', color: '#aaa' },
+      cellStyle: { fontFamily: 'monospace', fontSize: '11px', color: '#888', letterSpacing: '0.02em' },
     },
     {
       field: 'subject',
@@ -74,7 +147,7 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
       flex: 1,
       minWidth: 220,
       editable: true,
-      cellStyle: { fontWeight: '500', color: '#ededed', whiteSpace: 'normal', lineHeight: '1.35' },
+      cellStyle: { fontWeight: '500', color: '#e8e8e8', whiteSpace: 'normal', lineHeight: '1.4', paddingTop: '8px', paddingBottom: '8px' },
       wrapText: true,
       autoHeight: true,
     },
@@ -108,9 +181,37 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
     {
       field: 'supplier_name',
       headerName: 'SUPPLIER',
-      width: 110,
+      width: 120,
       editable: true,
-      cellStyle: { fontSize: '12px', color: '#ededed', fontWeight: '500' },
+      cellStyle: { fontSize: '12px', color: '#f97316', fontWeight: '500' },
+    },
+    {
+      field: 'provider_id',
+      headerName: 'PROVEEDOR',
+      width: 150,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['', ...providers.map(p => p.id)] },
+      valueFormatter: (p: { value: string }) => providerMap[p.value] ?? '—',
+      cellStyle: { fontSize: '12px', color: '#f97316', fontWeight: '500' },
+    },
+    {
+      field: 'provider_rate_id',
+      headerName: 'TARIFA',
+      width: 180,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: (p: { data: ResearchItem }) => {
+        const rates = (p.data?.provider_id ? providerRates[p.data.provider_id] : undefined) ?? []
+        return { values: ['', ...rates.map(r => r.id)] }
+      },
+      valueFormatter: (p: { value: string; data: ResearchItem }) => {
+        const rates = p.data?.provider_id ? (providerRates[p.data.provider_id] ?? []) : []
+        const rate = rates.find(r => r.id === p.value)
+        if (!rate) return '—'
+        return `${rate.label}${rate.rate_value != null ? ` · $${rate.rate_value}` : ''}${rate.rate_timing ? `/${rate.rate_timing}` : ''}`
+      },
+      cellStyle: { fontSize: '11px', color: '#aaa' },
     },
     {
       field: 'delivery_timing',
@@ -142,6 +243,16 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: { values: ['', ...FILE_TYPES] },
       cellStyle: { fontSize: '11px', color: '#888' },
+    },
+    {
+      field: 'file_quality',
+      headerName: 'QUALITY',
+      width: 95,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: { values: ['SCR', 'HQD'] },
+      valueFormatter: (p: { value: string | null }) => p.value || 'SCR',
+      cellStyle: { fontSize: '11px', color: '#aaa', fontFamily: 'monospace' },
     },
     {
       field: 'supplier_clip_id',
@@ -204,11 +315,11 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
     {
       field: 'usd_cost',
       headerName: 'USD',
-      width: 88,
+      width: 90,
       editable: true,
       type: 'numericColumn',
       valueFormatter: (p) => p.value != null ? `$${Number(p.value).toFixed(2)}` : '—',
-      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#ededed' },
+      cellStyle: { fontFamily: 'monospace', fontSize: '12px', color: '#4ade80', fontWeight: '500' },
     },
     {
       field: 'special_conditions',
@@ -295,29 +406,50 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
       valueFormatter: (p) => p.value ? 'YES' : 'NO',
     },
 
+    // ── Generated ID ────────────────────────────────────────────────────────
+    {
+      headerName: 'ID GENERADO',
+      width: 340,
+      editable: false,
+      sortable: false,
+      pinned: 'right',
+      cellRenderer: (p: ICellRendererParams<ResearchItem>) => p.data ? <GeneratedIdCell data={p.data} /> : null,
+      cellStyle: { paddingRight: '4px' },
+    },
+
     // ── Actions ──────────────────────────────────────────────────────────────
     {
       headerName: '',
-      width: 44,
+      width: 80,
       pinned: 'right',
       sortable: false,
       editable: false,
       cellRenderer: (p: ICellRendererParams<ResearchItem>) => (
-        <button
-          onClick={(e) => { e.stopPropagation(); if (p.data) onDelete(p.data.id) }}
-          className="h-full flex items-center justify-center text-[#444] hover:text-red-400 transition-colors"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className="h-full flex items-center justify-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); if (p.data) onPromote(p.data) }}
+            title="Promover a Material"
+            className="p-1 rounded text-[#444] hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
+          >
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); if (p.data) onDelete(p.data.id) }}
+            title="Eliminar"
+            className="p-1 rounded text-[#444] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       ),
     },
-  ] as ColDef<ResearchItem, any>[]), [onDelete])
+  ] as ColDef<ResearchItem, any>[]), [providers, providerMap, providerRates, onDelete, onPromote])
 
   const defaultColDef = useMemo<ColDef>(() => ({
     resizable: true,
     sortable: true,
     suppressMovable: false,
-    cellStyle: { display: 'flex', alignItems: 'center', color: '#ccc', fontSize: '13px' },
+    cellStyle: { display: 'flex', alignItems: 'center', color: '#bbb', fontSize: '12px', borderColor: '#1e1e1e' },
   }), [])
 
   const onCellValueChanged = useCallback((e: CellValueChangedEvent<ResearchItem>) => {
@@ -327,8 +459,9 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
   }, [onUpdate])
 
   return (
-    <div className="flex-1 min-w-0 ag-theme-archival" style={{ height: '100%' }}>
+    <div className="flex-1 min-w-0" style={{ height: '100%' }}>
       <AgGridReact<ResearchItem>
+        theme={darkTheme}
         rowData={items}
         columnDefs={colDefs}
         defaultColDef={defaultColDef}
@@ -338,6 +471,7 @@ export function ResearchGrid({ items, onUpdate, onDelete }: Props) {
         stopEditingWhenCellsLoseFocus
         getRowId={(p) => p.data.id}
         rowHeight={48}
+        headerHeight={38}
       />
     </div>
   )

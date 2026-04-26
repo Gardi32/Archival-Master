@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
+import { ThemeSettings } from '@/components/settings/ThemeSettings'
 
 interface Member {
   id: string
@@ -24,7 +25,12 @@ export default async function SettingsPage({ params }: { params: Promise<{ proje
   return (
     <div className="flex flex-col h-full">
       <Header title="Configuración" description="Equipo y ajustes del proyecto" email={user.email ?? ''} />
-      <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
+      <div className="flex-1 overflow-y-auto p-6 max-w-2xl space-y-6">
+
+        {/* Apariencia */}
+        <ThemeSettings />
+
+        {/* Miembros */}
         <div className="bg-[#1a1a1a] border border-[#242424] rounded-xl p-6">
           <h3 className="text-sm font-semibold text-[#ededed] mb-4">Miembros del proyecto</h3>
           <div className="space-y-3">
@@ -38,8 +44,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ proje
               </div>
             ))}
           </div>
-          <p className="text-xs text-[#555] mt-4">Para invitar miembros, usá el panel de administración de Supabase Auth mientras se desarrolla el sistema de invitaciones por email.</p>
+          <p className="text-xs text-[#555] mt-4">Para invitar miembros, usá el panel de administración de Supabase Auth.</p>
         </div>
+
       </div>
     </div>
   )

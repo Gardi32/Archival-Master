@@ -6,15 +6,17 @@ import { Button } from '@/components/ui/button'
 import { ResearchGrid } from './ResearchGrid'
 import { toast } from 'sonner'
 import { Plus, Download, Search, Upload } from 'lucide-react'
-import type { ResearchItem } from '@/types/database'
+import type { ResearchItem, Provider, ProviderRate } from '@/types/database'
 
 interface Props {
   projectId: string
   initialItems: ResearchItem[]
+  providers: Pick<Provider, 'id' | 'name'>[]
+  providerRates: Record<string, ProviderRate[]>
   userEmail: string
 }
 
-export function ResearchClient({ projectId, initialItems, userEmail }: Props) {
+export function ResearchClient({ projectId, initialItems, providers, providerRates, userEmail }: Props) {
   const [items, setItems] = useState<ResearchItem[]>(initialItems)
   const [search, setSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -69,6 +71,31 @@ export function ResearchClient({ projectId, initialItems, userEmail }: Props) {
     if (error) { toast.error('Error al guardar'); return }
     setItems(prev => prev.map(it => it.id === id ? (updated as ResearchItem) : it))
   }, [])
+
+  const handlePromote = useCallback(async (item: ResearchItem) => {
+    const supabase = createClient()
+    // Find the matching rate to pre-fill cost
+    const rate = item.provider_rate_id
+      ? (providerRates[item.provider_id ?? ''] ?? []).find(r => r.id === item.provider_rate_id)
+      : undefined
+
+    const { error } = await supabase.from('materials').insert({
+      project_id: projectId,
+      title: item.subject,
+      provider_id: item.provider_id ?? null,
+      provider_rate_id: item.provider_rate_id ?? null,
+      cost_amount: rate?.rate_value ?? item.usd_cost ?? null,
+      cost_currency: 'USD',
+      cost_unit: rate?.rate_timing ? 'per_min' : 'flat',
+      rights_type: 'unknown',
+      link: item.link_scr ?? null,
+      screener_url: item.link_scr ?? null,
+      status: 'searching',
+      notes: item.description ?? null,
+    } as never)
+    if (error) { toast.error('Error al promover'); return }
+    toast.success(`"${item.subject}" promovido a Materiales ✓`, { description: 'Encontralo en la sección Materiales.' })
+  }, [projectId, providerRates])
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('¿Eliminar esta entrada?')) return
@@ -209,8 +236,11 @@ export function ResearchClient({ projectId, initialItems, userEmail }: Props) {
       <div className="flex flex-1 min-h-0">
         <ResearchGrid
           items={filtered}
+          providers={providers}
+          providerRates={providerRates}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
+          onPromote={handlePromote}
         />
       </div>
     </div>

@@ -17,7 +17,7 @@ export default async function EdlPage({ params }: { params: Promise<{ projectId:
       .order('imported_at', { ascending: false }),
     supabase
       .from('materials')
-      .select('id, title, code, provider:providers(name)')
+      .select('id, title, code, provider:providers(id, name), provider_rate:provider_rates(id, label, rate_value, rate_timing)')
       .eq('project_id', projectId)
       .order('title'),
   ])

@@ -6,17 +6,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { Sparkles, Link, X } from 'lucide-react'
-import type { Material, Provider } from '@/types/database'
+import type { Material, Provider, ProviderRate } from '@/types/database'
 
 interface Props {
   projectId: string
   providers: Pick<Provider, 'id' | 'name'>[]
+  providerRates: Record<string, ProviderRate[]>
   initialData?: Partial<Material>
   onSave: (data: Partial<Material>) => Promise<void>
   onCancel: () => void
 }
 
-export function MaterialForm({ providers, initialData, onSave, onCancel }: Props) {
+export function MaterialForm({ providers, providerRates, initialData, onSave, onCancel }: Props) {
   const [saving, setSaving] = useState(false)
   const [extractUrl, setExtractUrl] = useState('')
   const [extracting, setExtracting] = useState(false)
@@ -24,7 +25,13 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
   const [form, setForm] = useState({
     title: initialData?.title ?? '',
     code: initialData?.code ?? '',
+    entry_code: initialData?.entry_code ?? '',
+    original_id: initialData?.original_id ?? '',
+    tags: initialData?.tags ?? '',
+    material_type: initialData?.material_type ?? '',
+    file_quality: initialData?.file_quality ?? 'SCR',
     provider_id: initialData?.provider_id ?? '',
+    provider_rate_id: initialData?.provider_rate_id ?? '',
     description: initialData?.description ?? '',
     duration_sec: initialData?.duration_sec?.toString() ?? '',
     format: initialData?.format ?? '',
@@ -97,7 +104,12 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
     await onSave({
       title: form.title,
       code: form.code || null,
+      original_id: form.original_id || null,
+      tags: form.tags || null,
+      material_type: form.material_type || null,
+      file_quality: form.file_quality || 'SCR',
       provider_id: form.provider_id || null,
+      provider_rate_id: form.provider_rate_id || null,
       description: form.description || null,
       duration_sec: form.duration_sec ? Number(form.duration_sec) : null,
       format: form.format || null,
@@ -183,14 +195,44 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
       {/* Identificación */}
       <div>
         <h3 className="text-xs font-semibold text-[#666] uppercase tracking-wider mb-3">Identificación</h3>
+        {form.entry_code && (
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-[#555]">N° de entrada:</span>
+            <span className="font-mono text-orange-400 font-semibold text-sm">{form.entry_code}</span>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-3">
-          <Input label="Código" id="code" value={form.code} onChange={e => set('code', e.target.value)} placeholder="Ej: ARCH-001" />
+          <Input label="Código interno" id="code" value={form.code} onChange={e => set('code', e.target.value)} placeholder="Ej: ARCH-001" />
           <div className="col-span-2">
             <Input label="Título *" id="title" value={form.title} onChange={e => set('title', e.target.value)} placeholder="Nombre del material" required />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <Select label="Proveedor" id="provider_id" value={form.provider_id} onChange={e => set('provider_id', e.target.value)}>
+          <Input label="ID Original (proveedor)" id="original_id" value={form.original_id} onChange={e => set('original_id', e.target.value)} placeholder="Ej: Getty-123456" />
+          <Input label="Tags" id="tags" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="Ej: futbol maradona 1986" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <Select label="Tipo de material" id="material_type" value={form.material_type} onChange={e => set('material_type', e.target.value)}>
+            <option value="">Sin definir</option>
+            <option value="video">Video</option>
+            <option value="foto">Foto</option>
+            <option value="grafico">Gráfico</option>
+            <option value="social_media">Social Media</option>
+            <option value="audio">Audio</option>
+            <option value="otro">Otro</option>
+          </Select>
+          <Select label="Calidad" id="file_quality" value={form.file_quality} onChange={e => set('file_quality', e.target.value)}>
+            <option value="SCR">Screener (SCR)</option>
+            <option value="HQD">Alta calidad (HQD)</option>
+          </Select>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <Select
+            label="Proveedor"
+            id="provider_id"
+            value={form.provider_id}
+            onChange={e => setForm(p => ({ ...p, provider_id: e.target.value, provider_rate_id: '' }))}
+          >
             <option value="">Sin asignar</option>
             {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
@@ -203,6 +245,25 @@ export function MaterialForm({ providers, initialData, onSave, onCancel }: Props
           </Select>
         </div>
       </div>
+
+      {/* Rate selector — shown only when provider has rates */}
+      {form.provider_id && (providerRates[form.provider_id]?.length ?? 0) > 0 && (
+        <Select
+          label="Tarifa aplicable"
+          id="provider_rate_id"
+          value={form.provider_rate_id}
+          onChange={e => set('provider_rate_id', e.target.value)}
+        >
+          <option value="">Sin tarifa asignada</option>
+          {(providerRates[form.provider_id] ?? []).map(r => (
+            <option key={r.id} value={r.id}>
+              {r.label}{r.rate_value != null ? ` — USD ${r.rate_value}${r.rate_timing ? `/${r.rate_timing}` : ''}` : ''}
+              {r.rate_variables ? ` (${r.rate_variables})` : ''}
+              {r.project_id ? ' [proyecto]' : ' [global]'}
+            </option>
+          ))}
+        </Select>
+      )}
 
       {/* Técnico */}
       <div>

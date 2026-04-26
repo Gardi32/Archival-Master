@@ -7,7 +7,7 @@ import { cn, STATUS_LABELS, STATUS_COLORS, RIGHTS_LABELS, COST_UNIT_LABELS, form
 import { X, Edit, Trash2, Upload, ExternalLink, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import Image from 'next/image'
-import type { Material, Provider } from '@/types/database'
+import type { Material, Provider, ProviderRate } from '@/types/database'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 
@@ -15,12 +15,13 @@ interface Props {
   material: Material
   projectId: string
   providers: Pick<Provider, 'id' | 'name'>[]
+  providerRates: Record<string, ProviderRate[]>
   onUpdate: (id: string, data: Partial<Material>) => void
   onDelete: (id: string) => void
   onClose: () => void
 }
 
-export function MaterialDetail({ material, projectId, providers, onUpdate, onDelete, onClose }: Props) {
+export function MaterialDetail({ material, projectId, providers, providerRates, onUpdate, onDelete, onClose }: Props) {
   const [editing, setEditing] = useState(false)
   const [frameIdx, setFrameIdx] = useState(0)
   const [uploadingFrame, setUploadingFrame] = useState(false)
@@ -83,6 +84,7 @@ export function MaterialDetail({ material, projectId, providers, onUpdate, onDel
           <MaterialForm
             projectId={projectId}
             providers={providers}
+            providerRates={providerRates}
             initialData={material}
             onSave={async (data) => { await onUpdate(material.id, data); setEditing(false) }}
             onCancel={() => setEditing(false)}

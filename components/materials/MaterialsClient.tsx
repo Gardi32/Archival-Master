@@ -9,16 +9,17 @@ import { MaterialDetail } from './MaterialDetail'
 import { MaterialGrid } from './MaterialGrid'
 import { toast } from 'sonner'
 import { Plus, Upload, Download, Search } from 'lucide-react'
-import type { Material, Provider } from '@/types/database'
+import type { Material, Provider, ProviderRate } from '@/types/database'
 
 interface Props {
   projectId: string
   initialMaterials: Material[]
-  providers: Pick<Provider, 'id' | 'name'>[]
+  providers: Pick<Provider, 'id' | 'name' | 'code'>[]
+  providerRates: Record<string, ProviderRate[]>
   userEmail: string
 }
 
-export function MaterialsClient({ projectId, initialMaterials, providers, userEmail }: Props) {
+export function MaterialsClient({ projectId, initialMaterials, providers, providerRates, userEmail }: Props) {
   const [materials, setMaterials] = useState<Material[]>(initialMaterials)
   const [showAddForm, setShowAddForm] = useState(false)
   const [selected, setSelected] = useState<Material | null>(null)
@@ -38,10 +39,22 @@ export function MaterialsClient({ projectId, initialMaterials, providers, userEm
 
   const handleAdd = useCallback(async (data: Partial<Material>) => {
     const supabase = createClient()
+    // Auto-assign entry_code if not provided
+    if (!data.entry_code) {
+      const { data: existing } = await supabase
+        .from('materials')
+        .select('entry_code')
+        .eq('project_id', projectId)
+        .not('entry_code', 'is', null)
+      const codes = (existing ?? []).map(m => parseInt(m.entry_code ?? '0', 10)).filter(n => !isNaN(n))
+      const nextNum = codes.length > 0 ? Math.max(...codes) + 1 : 1
+      data = { ...data, entry_code: String(nextNum).padStart(4, '0') }
+    }
+
     const { data: created, error } = await supabase
       .from('materials')
       .insert({ ...data, project_id: projectId } as never)
-      .select('*, provider:providers(id, name), frames:material_frames(id, storage_path, order_index)')
+      .select('*, provider:providers(id, name, code), frames:material_frames(id, storage_path, order_index)')
       .single()
 
     if (error) { toast.error('Error al crear material'); return }
@@ -56,7 +69,7 @@ export function MaterialsClient({ projectId, initialMaterials, providers, userEm
       .from('materials')
       .update(data as never)
       .eq('id', id)
-      .select('*, provider:providers(id, name), frames:material_frames(id, storage_path, order_index)')
+      .select('*, provider:providers(id, name, code), frames:material_frames(id, storage_path, order_index)')
       .single()
 
     if (error) { toast.error('Error al actualizar'); return }
@@ -171,10 +184,10 @@ export function MaterialsClient({ projectId, initialMaterials, providers, userEm
         }
       />
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         <MaterialGrid
           materials={filtered}
-          providers={providers}
+          providers={providers as Pick<Provider, 'id' | 'name' | 'code'>[]}
           projectId={projectId}
           onUpdate={handleUpdate}
           onSelect={setSelected}
@@ -182,14 +195,17 @@ export function MaterialsClient({ projectId, initialMaterials, providers, userEm
         />
 
         {selected && (
-          <MaterialDetail
-            material={selected}
-            projectId={projectId}
-            providers={providers}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            onClose={() => setSelected(null)}
-          />
+          <div className="w-96 shrink-0 border-l border-[#242424] overflow-y-auto">
+            <MaterialDetail
+              material={selected}
+              projectId={projectId}
+              providers={providers}
+              providerRates={providerRates}
+              onUpdate={handleUpdate}
+              onDelete={handleDelete}
+              onClose={() => setSelected(null)}
+            />
+          </div>
         )}
       </div>
 
@@ -198,6 +214,7 @@ export function MaterialsClient({ projectId, initialMaterials, providers, userEm
           <MaterialForm
             projectId={projectId}
             providers={providers}
+            providerRates={providerRates}
             onSave={handleAdd}
             onCancel={() => setShowAddForm(false)}
           />
