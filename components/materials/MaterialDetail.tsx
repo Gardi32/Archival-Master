@@ -11,6 +11,26 @@ import type { Material, Provider, ProviderRate } from '@/types/database'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 
+function sanitizeForFilename(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s_-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .slice(0, 45)
+}
+
+export function buildNewFilename(material: { entry_code: string | null; title: string; original_filename: string | null }): string | null {
+  const code = material.entry_code
+  if (!code) return null
+  const ext = material.original_filename?.includes('.')
+    ? '.' + material.original_filename.split('.').pop()!.toLowerCase()
+    : ''
+  const title = sanitizeForFilename(material.title)
+  return `${code}_${title}${ext}`
+}
+
 interface Props {
   material: Material
   projectId: string
@@ -193,6 +213,15 @@ export function MaterialDetail({ material, projectId, providers, providerRates, 
         </div>
 
         <div className="space-y-3">
+          {(material.original_filename || material.entry_code) && (
+            <Section title="Archivo">
+              {material.original_filename && (
+                <Row label="Nombre original" value={material.original_filename} mono />
+              )}
+              <Row label="Nuevo nombre" value={buildNewFilename(material)} mono />
+            </Section>
+          )}
+
           <Section title="Técnico">
             <Row label="Duración" value={formatDuration(material.duration_sec)} />
             <Row label="Formato" value={material.format} />

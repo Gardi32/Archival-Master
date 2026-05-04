@@ -73,8 +73,9 @@ export interface Material {
   aspect_ratio: string | null
   timecode_in: string | null
   timecode_out: string | null
-  entry_code: string | null     // auto-assigned 4-digit sequential: 0001, 0002...
-  original_id: string | null   // supplier's original clip/asset ID
+  entry_code: string | null       // auto-assigned 4-digit sequential: 0001, 0002...
+  original_id: string | null     // supplier's original clip/asset ID
+  original_filename: string | null // nombre original del archivo (ej: clip_0023.mp4)
   tags: string | null
   material_type: string | null  // video | foto | grafico | social_media | audio | otro
   file_quality: string | null   // HQD | SCR
