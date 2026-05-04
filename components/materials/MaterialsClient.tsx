@@ -7,24 +7,27 @@ import { Dialog } from '@/components/ui/dialog'
 import { MaterialForm } from './MaterialForm'
 import { MaterialDetail } from './MaterialDetail'
 import { MaterialGrid } from './MaterialGrid'
+import { buildNewFilename } from './MaterialDetail'
 import { toast } from 'sonner'
-import { Plus, Upload, Download, Search } from 'lucide-react'
+import { Plus, Upload, Download, Search, FileCode, FileText } from 'lucide-react'
 import type { Material, Provider, ProviderRate } from '@/types/database'
 
 interface Props {
   projectId: string
+  projectName: string
   initialMaterials: Material[]
   providers: Pick<Provider, 'id' | 'name' | 'code'>[]
   providerRates: Record<string, ProviderRate[]>
   userEmail: string
 }
 
-export function MaterialsClient({ projectId, initialMaterials, providers, providerRates, userEmail }: Props) {
+export function MaterialsClient({ projectId, projectName, initialMaterials, providers, providerRates, userEmail }: Props) {
   const [materials, setMaterials] = useState<Material[]>(initialMaterials)
   const [showAddForm, setShowAddForm] = useState(false)
   const [selected, setSelected] = useState<Material | null>(null)
   const [search, setSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const txtInputRef = useRef<HTMLInputElement>(null)
 
   const filtered = useMemo(() => {
     if (!search) return materials
@@ -131,6 +134,191 @@ export function MaterialsClient({ projectId, initialMaterials, providers, provid
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // ── PowerShell rename script ──────────────────────────────────────────────
+  function handleGenerateScript() {
+    const withFiles = materials.filter(m => m.original_filename && m.entry_code)
+    if (withFiles.length === 0) {
+      toast.error('Ningún material tiene nombre de archivo original cargado.')
+      return
+    }
+
+    const slug = projectName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30)
+    const fecha = new Date().toISOString().slice(0, 10)
+
+    const mapLines = withFiles.map(m => {
+      const newName = buildNewFilename(m) ?? m.original_filename!
+      const from = m.original_filename!.replace(/'/g, "''")
+      const to   = newName.replace(/'/g, "''")
+      return `    [PSCustomObject]@{ Desde = '${from}'; Hacia = '${to}' }`
+    }).join('\n')
+
+    const script = `# ============================================================
+# ArchivalMaster — Script de renombre masivo
+# Proyecto : ${projectName}
+# Generado : ${fecha}
+# Materiales: ${withFiles.length}
+# ============================================================
+#
+# CÓMO USAR:
+#   1. Abrí PowerShell (clic derecho → "Abrir con PowerShell")
+#   2. Ejecutá:
+#        .\\rename_${slug}.ps1 -Carpeta "C:\\ruta\\de\\tus\\archivos"
+#
+#   Google Drive montado como unidad (ej. G:\\):
+#        .\\rename_${slug}.ps1 -Carpeta "G:\\Mi unidad\\Carpeta proyecto"
+#
+#   Red local / NAS:
+#        .\\rename_${slug}.ps1 -Carpeta "\\\\servidor\\carpeta"
+#
+#   Modo prueba (solo muestra cambios, NO renombra nada):
+#        .\\rename_${slug}.ps1 -Carpeta "C:\\ruta" -DryRun
+# ============================================================
+
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$Carpeta,
+    [switch]$DryRun
+)
+
+$ErrorActionPreference = 'Continue'
+$ok = 0; $skip = 0; $err = 0
+
+$renombres = @(
+${mapLines}
+)
+
+Write-Host ''
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host "  ArchivalMaster — Renombre masivo" -ForegroundColor Cyan
+Write-Host "  Proyecto : ${projectName}" -ForegroundColor Cyan
+Write-Host "  Archivos : $($renombres.Count)" -ForegroundColor Cyan
+Write-Host '============================================================' -ForegroundColor Cyan
+Write-Host "  Carpeta  : $Carpeta"
+if ($DryRun) { Write-Host '  [MODO PRUEBA — no se modificará nada]' -ForegroundColor Yellow }
+Write-Host ''
+
+if (-not (Test-Path $Carpeta)) {
+    Write-Host "ERROR: La carpeta '$Carpeta' no existe." -ForegroundColor Red
+    exit 1
+}
+
+foreach ($r in $renombres) {
+    if ($r.Desde -eq $r.Hacia) { $skip++; continue }
+
+    $origen  = Join-Path $Carpeta $r.Desde
+    $destino = Join-Path $Carpeta $r.Hacia
+
+    if (Test-Path $origen) {
+        if (Test-Path $destino) {
+            Write-Host "  ⚠  Ya existe destino: $($r.Hacia)" -ForegroundColor Yellow
+            $skip++
+        } elseif ($DryRun) {
+            Write-Host "  ▸  $($r.Desde)  →  $($r.Hacia)" -ForegroundColor Yellow
+            $ok++
+        } else {
+            try {
+                Rename-Item -Path $origen -NewName $r.Hacia -ErrorAction Stop
+                Write-Host "  ✓  $($r.Desde)  →  $($r.Hacia)" -ForegroundColor Green
+                $ok++
+            } catch {
+                Write-Host "  ✗  ERROR: $($r.Desde)" -ForegroundColor Red
+                Write-Host "     $($_.Exception.Message)" -ForegroundColor DarkRed
+                $err++
+            }
+        }
+    } else {
+        Write-Host "  -  No encontrado: $($r.Desde)" -ForegroundColor DarkGray
+        $skip++
+    }
+}
+
+Write-Host ''
+Write-Host '------------------------------------------------------------' -ForegroundColor Cyan
+Write-Host "  Renombrados      : $ok" -ForegroundColor Green
+Write-Host "  No encontrados   : $skip" -ForegroundColor Gray
+if ($err -gt 0) {
+    Write-Host "  Errores          : $err" -ForegroundColor Red
+} else {
+    Write-Host "  Errores          : 0" -ForegroundColor Gray
+}
+Write-Host '------------------------------------------------------------' -ForegroundColor Cyan
+Write-Host ''
+Read-Host 'Presioná ENTER para cerrar'
+`
+    const blob = new Blob([script], { type: 'text/plain;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `rename_${slug}.ps1`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Script generado con ${withFiles.length} archivos`)
+  }
+
+  // ── Import .txt con nombres de archivo ───────────────────────────────────
+  // Formatos soportados (uno por línea):
+  //   clip_0023.mp4                         → busca por título similar
+  //   Getty-123456: clip_0023.mp4           → busca por original_id = "Getty-123456"
+  //   Getty-123456 clip_0023.mp4            → ídem separado por espacio
+  //   0001 clip_0023.mp4                    → busca por entry_code = "0001"
+  async function handleTxtImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+
+    const supabase = createClient()
+    let matched = 0, unmatched = 0
+
+    for (const line of lines) {
+      let originalId: string | null = null
+      let entryCode: string | null  = null
+      let filename: string          = line
+
+      // Formato: "Getty-123456: clip_0023.mp4"  o  "Getty-123456 clip_0023.mp4"
+      const colonMatch = line.match(/^([^:]+):\s*(.+)$/)
+      const spaceMatch = !colonMatch && line.match(/^(\S+)\s+(\S+\.\w+)$/)
+
+      if (colonMatch) {
+        const key = colonMatch[1].trim()
+        filename  = colonMatch[2].trim()
+        if (/^\d{4}$/.test(key)) entryCode = key
+        else originalId = key
+      } else if (spaceMatch) {
+        const key = spaceMatch[1].trim()
+        filename  = spaceMatch[2].trim()
+        if (/^\d{4}$/.test(key)) entryCode = key
+        else originalId = key
+      }
+
+      // Buscar material coincidente
+      let target: Material | undefined
+      if (entryCode) {
+        target = materials.find(m => m.entry_code === entryCode)
+      } else if (originalId) {
+        target = materials.find(m => m.original_id === originalId)
+      }
+      // fallback: sin clave → saltar
+      if (!target) { unmatched++; continue }
+
+      const { data: updated, error } = await supabase
+        .from('materials')
+        .update({ original_filename: filename } as never)
+        .eq('id', target.id)
+        .select('*, provider:providers(id, name), frames:material_frames(id, storage_path, order_index)')
+        .single()
+
+      if (!error && updated) {
+        setMaterials(prev => prev.map(m => m.id === target!.id ? updated : m))
+        matched++
+      }
+    }
+
+    toast.success(`${matched} archivos vinculados${unmatched > 0 ? ` · ${unmatched} líneas sin coincidencia` : ''}`)
+    if (txtInputRef.current) txtInputRef.current.value = ''
+  }
+
   function handleCsvExport() {
     const headers = ['codigo', 'titulo', 'proveedor', 'duracion_seg', 'formato', 'resolucion', 'fps', 'aspect_ratio', 'tc_in', 'tc_out', 'derechos', 'costo', 'moneda', 'unidad_costo', 'link', 'screener', 'estado', 'notas']
     const rows = materials.map(m => [
@@ -176,6 +364,29 @@ export function MaterialsClient({ projectId, initialMaterials, providers, provid
               <Download className="h-3.5 w-3.5" />
               Exportar
             </Button>
+
+            {/* Separador */}
+            <div className="w-px h-4 bg-[#2a2a2a]" />
+
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => txtInputRef.current?.click()}
+              title="Importar listado .txt con nombres de archivo originales"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Importar .txt
+            </Button>
+            <input ref={txtInputRef} type="file" accept=".txt" className="hidden" onChange={handleTxtImport} />
+
+            <Button
+              variant="ghost" size="sm"
+              onClick={handleGenerateScript}
+              title="Descargar script PowerShell para renombrar archivos"
+            >
+              <FileCode className="h-3.5 w-3.5" />
+              Script .ps1
+            </Button>
+
             <Button variant="primary" size="sm" onClick={() => setShowAddForm(true)}>
               <Plus className="h-3.5 w-3.5" />
               Agregar

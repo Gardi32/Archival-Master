@@ -27,6 +27,7 @@ export function MaterialForm({ providers, providerRates, initialData, onSave, on
     code: initialData?.code ?? '',
     entry_code: initialData?.entry_code ?? '',
     original_id: initialData?.original_id ?? '',
+    original_filename: initialData?.original_filename ?? '',
     tags: initialData?.tags ?? '',
     material_type: initialData?.material_type ?? '',
     file_quality: initialData?.file_quality ?? 'SCR',
@@ -105,6 +106,7 @@ export function MaterialForm({ providers, providerRates, initialData, onSave, on
       title: form.title,
       code: form.code || null,
       original_id: form.original_id || null,
+      original_filename: form.original_filename || null,
       tags: form.tags || null,
       material_type: form.material_type || null,
       file_quality: form.file_quality || 'SCR',
@@ -210,6 +212,18 @@ export function MaterialForm({ providers, providerRates, initialData, onSave, on
         <div className="grid grid-cols-2 gap-3 mt-3">
           <Input label="ID Original (proveedor)" id="original_id" value={form.original_id} onChange={e => set('original_id', e.target.value)} placeholder="Ej: Getty-123456" />
           <Input label="Tags" id="tags" value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="Ej: futbol maradona 1986" />
+        </div>
+        <div className="mt-3">
+          <Input
+            label="Nombre de archivo original"
+            id="original_filename"
+            value={form.original_filename}
+            onChange={e => set('original_filename', e.target.value)}
+            placeholder="Ej: clip_0023_hd.mov  o  AP_12345678_preview.mp4"
+          />
+          <p className="text-[10px] text-[#444] mt-1">
+            Nombre exacto del archivo tal como llega del proveedor — se usa para generar el script de renombre.
+          </p>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <Select label="Tipo de material" id="material_type" value={form.material_type} onChange={e => set('material_type', e.target.value)}>
