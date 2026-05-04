@@ -28,6 +28,7 @@ export function MaterialsClient({ projectId, projectName, initialMaterials, prov
   const [search, setSearch] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const txtInputRef = useRef<HTMLInputElement>(null)
+  const txtCreateInputRef = useRef<HTMLInputElement>(null)
 
   const filtered = useMemo(() => {
     if (!search) return materials
@@ -319,6 +320,74 @@ Read-Host 'Presioná ENTER para cerrar'
     if (txtInputRef.current) txtInputRef.current.value = ''
   }
 
+  // ── Crear materiales desde .txt (una línea = un material nuevo) ───────────
+  // Cada línea es el nombre del archivo original.
+  // El título se genera limpiando el nombre (sin extensión, guiones/guiones bajos → espacios).
+  // El entry_code se asigna automáticamente en secuencia.
+  async function handleTxtCreateMaterials(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const text = await file.text()
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0 && !l.startsWith('#'))
+
+    if (lines.length === 0) { toast.error('El archivo está vacío'); return }
+
+    const supabase = createClient()
+
+    // Calcular próximo entry_code
+    const existingCodes = materials
+      .map(m => parseInt(m.entry_code ?? '0', 10))
+      .filter(n => !isNaN(n))
+    let nextCode = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1
+
+    const created: Material[] = []
+    let errors = 0
+
+    for (const line of lines) {
+      const filename = line
+      // Título: quitar extensión, reemplazar _ y - por espacios, capitalizar primera letra
+      const nameWithoutExt = filename.replace(/\.[^.]+$/, '')
+      const title = nameWithoutExt
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^./, c => c.toUpperCase()) || filename
+
+      const entry_code = String(nextCode).padStart(4, '0')
+
+      const { data, error } = await supabase
+        .from('materials')
+        .insert({
+          project_id: projectId,
+          title,
+          original_filename: filename,
+          entry_code,
+          status: 'searching',
+          rights_type: 'unknown',
+          cost_currency: 'USD',
+          cost_unit: 'flat',
+        } as never)
+        .select('*, provider:providers(id, name), frames:material_frames(id, storage_path, order_index)')
+        .single()
+
+      if (error) { errors++; continue }
+      created.push(data as Material)
+      nextCode++
+    }
+
+    setMaterials(prev => [...prev, ...created])
+    if (errors > 0) {
+      toast.warning(`${created.length} materiales creados · ${errors} errores`)
+    } else {
+      toast.success(`${created.length} material${created.length !== 1 ? 'es' : ''} creado${created.length !== 1 ? 's' : ''} desde el listado`)
+    }
+    if (txtCreateInputRef.current) txtCreateInputRef.current.value = ''
+  }
+
   function handleCsvExport() {
     const headers = ['codigo', 'titulo', 'proveedor', 'duracion_seg', 'formato', 'resolucion', 'fps', 'aspect_ratio', 'tc_in', 'tc_out', 'derechos', 'costo', 'moneda', 'unidad_costo', 'link', 'screener', 'estado', 'notas']
     const rows = materials.map(m => [
@@ -370,11 +439,21 @@ Read-Host 'Presioná ENTER para cerrar'
 
             <Button
               variant="ghost" size="sm"
-              onClick={() => txtInputRef.current?.click()}
-              title="Importar listado .txt con nombres de archivo originales"
+              onClick={() => txtCreateInputRef.current?.click()}
+              title="Crear materiales desde listado .txt (una línea = un material nuevo)"
             >
               <FileText className="h-3.5 w-3.5" />
-              Importar .txt
+              Crear desde .txt
+            </Button>
+            <input ref={txtCreateInputRef} type="file" accept=".txt" className="hidden" onChange={handleTxtCreateMaterials} />
+
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => txtInputRef.current?.click()}
+              title="Vincular nombres de archivo a materiales existentes por ID"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Vincular .txt
             </Button>
             <input ref={txtInputRef} type="file" accept=".txt" className="hidden" onChange={handleTxtImport} />
 
